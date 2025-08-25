@@ -1,12 +1,91 @@
-# React + Vite
+🧠 Brainmap – AI Roadmap Generator
+Your Personal Guide to Learning Mastery
+🚀 LIVE DEMO – Try Brainmap now!
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+✨ Overview
+Brainmap is an AI-powered learning management platform.
+Transform your learning ambitions into reality:
 
-Currently, two official plugins are available:
+Personalized learning roadmaps
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Visual progress tracking
 
-## Expanding the ESLint configuration
+Intelligent assessments
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+🎯 Features
+🗺️ Smart Roadmap Generation:
+Tell us your goal. Our AI generates a tailored, step-by-step plan for your success.
+
+📈 Interactive Progress Tracking:
+Visualize your journey with timelines, analytics, milestones, and achievements.
+
+🧠 Knowledge Validation:
+Boost confidence with quizzes and mastery checkpoints at each step.
+
+📸 Screenshots
+Dashboard Overview
+
+Learning Roadmaps
+
+🛠️ Tech Stack
+Backend:
+
+Node.js & Express.js
+
+Google Gemini AI, Mistral AI
+
+RESTful API
+
+Frontend:
+
+Modern JavaScript (ES6+)
+
+Responsive, card-based UI, purple gradient theme
+
+Deployment:
+
+Render.com
+
+Environment variable configuration
+
+🔗 API Endpoints
+Endpoint	Purpose	Status
+/api/generate-roadmap	Create learning roadmaps	✅ Live
+/api/generate-instructions	Generate step-by-step guides	✅ Live
+/api/health	System health check	✅ Live
+Try:
+
+bash
+curl https://ai-roadmap-generator-5iqz.onrender.com/api/health
+🚀 Quick Start
+1. Clone & Install
+
+bash
+git clone https://github.com/sengobasar/AI-ROADMAP-GENERATOR.git
+cd AI-ROADMAP-GENERATOR
+npm install
+2. Environment Setup
+Configure:
+
+text
+GEMINI_API_KEY=your_gemini_api_key
+MISTRAL_API_KEY=your_mistral_api_key
+3. Run Locally
+
+bash
+npm start
+# Visit http://localhost:3001
+🌐 Deployment
+Deployed on Render.com (Live Demo)
+
+Github auto-deploy
+
+Free tier with cold start minimization
+
+To deploy your own:
+
+Fork this repo and connect to Render.com
+
+Set environment variables
+
+One-click deploy from dashboard
