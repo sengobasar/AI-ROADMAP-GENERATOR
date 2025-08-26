@@ -13,62 +13,40 @@ export default function Register({ onSuccess }) {
     e.preventDefault();
     setError("");
     setMessage("");
-    
-    if (password !== confirm) {
-      return setError("Passwords must match");
-    }
-
-    if (password.length < 6) {
-      return setError("Password must be at least 6 characters long");
-    }
-
-    console.log("Attempting to register with:", { email, passwordLength: password.length });
+    if (password !== confirm) return setError("Passwords must match");
     
     setLoading(true);
     
-    try {
-      const { data, error } = await supabase.auth.signUp({ 
-        email: email.trim(), // Remove any whitespace
-        password 
-      });
+    console.log("Attempting registration with:", {
+      email: email.trim(),
+      passwordLength: password.length,
+      supabaseUrl: supabase.supabaseUrl,
+      supabaseKey: supabase.supabaseKey ? "exists" : "missing"
+    });
+    
+    const { data, error } = await supabase.auth.signUp({ 
+      email: email.trim(), 
+      password 
+    });
+    
+    console.log("Full registration response:", { data, error });
+    
+    setLoading(false);
+    
+    if (error) {
+      console.error("Registration error:", error);
+      setError(error.message);
+    } else {
+      console.log("Registration data:", data);
+      console.log("User created:", data.user);
+      console.log("Session:", data.session);
       
-      console.log("Registration response:", { data, error });
-      
-      setLoading(false);
-      
-      if (error) {
-        console.error("Registration error:", error);
-        setError(error.message);
+      if (data.user) {
+        setMessage(`Registration successful! User ID: ${data.user.id}`);
+        onSuccess();
       } else {
-        console.log("Registration successful. User data:", data.user);
-        
-        // Check if user was actually created
-        if (data.user) {
-          setMessage(`Registration successful! User created with ID: ${data.user.id}`);
-          
-          // Try to immediately sign in to test
-          console.log("Attempting immediate sign in...");
-          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-            email: email.trim(),
-            password
-          });
-          
-          console.log("Immediate sign in result:", { signInData, signInError });
-          
-          if (signInError) {
-            setMessage(prev => prev + ` However, immediate login failed: ${signInError.message}`);
-          } else {
-            setMessage(prev => prev + " And immediate login was successful!");
-            onSuccess();
-          }
-        } else {
-          setError("Registration appeared successful but no user data returned");
-        }
+        setError("Registration returned success but no user created");
       }
-    } catch (err) {
-      console.error("Unexpected error during registration:", err);
-      setError("An unexpected error occurred");
-      setLoading(false);
     }
   }
 
@@ -76,7 +54,6 @@ export default function Register({ onSuccess }) {
     <form onSubmit={handleRegister}>
       {error && <div className="alert alert-danger">{error}</div>}
       {message && <div className="alert alert-success">{message}</div>}
-      
       <div className="mb-3">
         <label className="form-label">Email</label>
         <input
@@ -87,7 +64,6 @@ export default function Register({ onSuccess }) {
           required
         />
       </div>
-      
       <div className="mb-3">
         <label className="form-label">Password</label>
         <input
@@ -96,10 +72,8 @@ export default function Register({ onSuccess }) {
           value={password}
           onChange={e => setPassword(e.target.value)}
           required
-          minLength={6}
         />
       </div>
-      
       <div className="mb-3">
         <label className="form-label">Confirm Password</label>
         <input
@@ -108,10 +82,8 @@ export default function Register({ onSuccess }) {
           value={confirm}
           onChange={e => setConfirm(e.target.value)}
           required
-          minLength={6}
         />
       </div>
-      
       <button
         type="submit"
         className="btn btn-primary w-100"
