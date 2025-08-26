@@ -14,12 +14,15 @@ export default function Login({ onSuccess }) {
 
     try {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+  email,
+  password,
+});
 
-      if (signInError) {
-        setError(signInError.message);
+// Add this line:
+console.log("Login response:", { data, error: signInError });
+
+if (signInError) {
+  setError(signInError.message);
       } else if (data?.user) {
         onSuccess?.(data.user); // callback with user object
       }
