@@ -401,11 +401,38 @@ const TimelineNode = ({ step, index, isCompleted, onToggle, onStepClick, isHighl
     </div>
   );
 };
-
 const RoadmapDashboard = () => {
-  const [projects, setProjects] = useState([]);
-  const [currentView, setCurrentView] = useState('dashboard');
-  const [selectedProject, setSelectedProject] = useState(null);
+  const [projects, setProjects] = useState(() => {
+    const saved = localStorage.getItem('projects');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('projects', JSON.stringify(projects));
+  }, [projects]);
+
+  const [currentView, setCurrentView] = useState(() => {
+    const saved = localStorage.getItem('currentView');
+    return saved || 'dashboard';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('currentView', currentView);
+  }, [currentView]);
+
+  const [selectedProject, setSelectedProject] = useState(() => {
+    const saved = localStorage.getItem('selectedProject');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  useEffect(() => {
+    if (selectedProject) {
+      localStorage.setItem('selectedProject', JSON.stringify(selectedProject));
+    } else {
+      localStorage.removeItem('selectedProject');
+    }
+  }, [selectedProject]);
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showQuizModal, setShowQuizModal] = useState(false);
