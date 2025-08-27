@@ -12,11 +12,10 @@ const PORT = process.env.PORT || 3001;
 const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
-  'https://illustrious-pika-a1466a.netlify.app',
+  'https://roadmap-maker.netlify.app',
   'https://ai-roadmap-generator-c1q3.onrender.com',
-  'https://flowniq.netlify.app',
-  'https://flowniq.onrender.com'
 ];
+
 
 const corsOptions = {
   origin: function (origin, callback) {
