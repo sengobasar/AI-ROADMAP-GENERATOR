@@ -44,7 +44,7 @@ const QuizModal = ({ project, onClose, onComplete }) => {
   const generateQuestionsForStep = async (step, projectPrompt) => {
     try {
       // Use your backend instead of calling Gemini directly
-      const response = await fetch('http://localhost:3001/api/instructions', {
+      const response = await fetch('https://ai-roadmap-generator-c1q3.onrender.com/api/instructions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -425,7 +425,7 @@ const RoadmapDashboard = () => {
       setLoadingMessage('Connecting to AI to generate your roadmap...');
 
       // Call your backend instead of Gemini directly
-      const response = await fetch('http://localhost:3001/api/generate-roadmap', {
+      const response = await fetch('https://ai-roadmap-generator-c1q3.onrender.com/api/generate-roadmap', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -486,7 +486,7 @@ const RoadmapDashboard = () => {
     try {
       console.log('Calling backend for enhanced instructions...');
       
-      const response = await fetch('http://localhost:3001/api/instructions', {
+      const response = await fetch('https://ai-roadmap-generator-c1q3.onrender.com/api/instructions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

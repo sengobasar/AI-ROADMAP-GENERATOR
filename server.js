@@ -9,17 +9,35 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'https://flowniq.netlify.app',
-    'https://flowniq.onrender.com',
-  ],
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'https://illustrious-pika-a1466a.netlify.app',
+  'https://ai-roadmap-generator-c1q3.onrender.com',
+  'https://flowniq.netlify.app',
+  'https://flowniq.onrender.com'
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) {
+      // Allow requests with no origin like Postman or server-to-server requests
+      callback(null, true);
+      return;
+    }
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS policy does not allow access from this origin'), false);
+    }
+  },
   credentials: true
-}));
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
+// Your existing keys and configuration follow here...
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
 
@@ -28,6 +46,7 @@ const mistralConfigured = !!(MISTRAL_API_KEY && MISTRAL_API_KEY.trim().length > 
 
 console.log('🔑 Gemini API Key configured:', geminiConfigured);
 console.log('🔑 Mistral API Key configured:', mistralConfigured);
+
 
 let genAI = null;
 if (geminiConfigured) {
