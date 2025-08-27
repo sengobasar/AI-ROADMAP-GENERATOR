@@ -1,6 +1,6 @@
 🧠 Brainmap – AI Roadmap Generator
 Your Personal Guide to Learning Mastery
-🚀 LIVE DEMO – Try Brainmap now!
+🚀 LIVE DEMO –  https://roadmap-maker.netlify.app/
 
 ✨ Overview
 Brainmap is an AI-powered learning management platform.
@@ -56,7 +56,7 @@ Endpoint	Purpose	Status
 Try:
 
 bash
-curl https://ai-roadmap-generator-5iqz.onrender.com/api/health
+curl [https://ai-roadmap-generator-5iqz.onrender.com/api/health](https://ai-roadmap-generator-c1q3.onrender.com/api/health)
 🚀 Quick Start
 1. Clone & Install
 
