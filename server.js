@@ -2,37 +2,40 @@ import express from 'express';
 import cors from 'cors';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
+import fetch from 'node-fetch';
 
-// Load environment variables
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware - CORS configuration
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  origin: [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'https://flowniq.netlify.app',
+    'https://flowniq.onrender.com',
+  ],
   credentials: true
 }));
-
 app.use(express.json());
 
-// Initialize AI services
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
-console.log('🔑 Gemini API Key configured:', !!(GEMINI_API_KEY && GEMINI_API_KEY !== 'your-gemini-api-key-here'));
-console.log('🔑 Mistral API Key configured:', !!(MISTRAL_API_KEY && MISTRAL_API_KEY !== 'your_mistral_api_key_here'));
+
+const geminiConfigured = !!(GEMINI_API_KEY && GEMINI_API_KEY.trim().length > 0);
+const mistralConfigured = !!(MISTRAL_API_KEY && MISTRAL_API_KEY.trim().length > 0);
+
+console.log('🔑 Gemini API Key configured:', geminiConfigured);
+console.log('🔑 Mistral API Key configured:', mistralConfigured);
 
 let genAI = null;
-if (GEMINI_API_KEY && GEMINI_API_KEY !== 'your-gemini-api-key-here') {
+if (geminiConfigured) {
   genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 }
 
-// Mistral API configuration
 const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions';
-const mistralConfigured = !!(MISTRAL_API_KEY && MISTRAL_API_KEY !== 'your_mistral_api_key_here');
 
-// Helper function to call Mistral API via HTTP
 async function callMistralAPI(messages, model = 'mistral-small-latest', maxTokens = 500, temperature = 0.7) {
   if (!mistralConfigured) {
     throw new Error('Mistral API key not configured');
@@ -60,254 +63,458 @@ async function callMistralAPI(messages, model = 'mistral-small-latest', maxToken
   return await response.json();
 }
 
-// Helper function to clean AI response text
 function cleanAIResponse(text) {
   return text
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
-    .replace(/`(.*?)`/g, '$1')
+    .replace(/\`(.*?)\`/g, '$1')
     .replace(/#{1,6}\s/g, '')
     .trim();
 }
 
-// Helper function to generate fallback project name
-function generateFallbackProjectName(prompt) {
-  const words = prompt.toLowerCase().split(' ');
-  const keyWords = words.filter(word => 
-    word.length > 3 && 
-    !['learn', 'how', 'to', 'start', 'begin', 'get', 'become', 'make', 'create'].includes(word)
-  );
-  
-  if (keyWords.length > 0) {
-    const mainWord = keyWords[0].charAt(0).toUpperCase() + keyWords[0].slice(1);
-    return `${mainWord} Journey`;
-  }
-  
-  return 'Learning Roadmap';
-}
+function parseInstructionsFromAI(content, stepDescription) {
+  const lines = content.split('\n').filter(line => line.trim());
+  const instructions = [];
 
-// Helper function to generate fallback roadmap
-function generateFallbackRoadmap(prompt) {
-  const projectName = generateFallbackProjectName(prompt);
-  
-  // Generate generic but relevant steps based on common learning patterns
-  const roadmap = [
-    {
-      title: "Foundation",
-      description: `Research and understand the basics of ${prompt.toLowerCase()}`
-    },
-    {
-      title: "Planning",
-      description: `Set clear goals and create a structured learning plan`
-    },
-    {
-      title: "Resources",
-      description: `Gather necessary tools, materials, and learning resources`
-    },
-    {
-      title: "Practice",
-      description: `Start with simple exercises and hands-on practice`
-    },
-    {
-      title: "Building",
-      description: `Create small projects to apply what you've learned`
-    },
-    {
-      title: "Refinement",
-      description: `Improve skills through feedback and iteration`
-    },
-    {
-      title: "Advanced",
-      description: `Tackle more complex challenges and advanced concepts`
-    },
-    {
-      title: "Mastery",
-      description: `Achieve proficiency and share knowledge with others`
-    }
-  ];
-
-  return { projectName, roadmap };
-}
-
-// Helper function to parse roadmap from AI response
-function parseRoadmapFromResponse(text) {
-  const cleanedText = cleanAIResponse(text);
-  const lines = cleanedText.split('\n').filter(line => line.trim());
-  const roadmap = [];
-  
   for (const line of lines) {
-    // Match various step formats: "Step 1:", "1.", "•", "-", etc.
-    const stepMatch = line.match(/^(?:Step\s+\d+:|[\d]+\.|\•|\-|\*)\s*(.+)/i);
-    if (stepMatch) {
-      const content = stepMatch[1].trim();
-      
-      // Try to split title and description by " - " or ":"
-      const parts = content.split(/\s*[-:]\s*/);
-      
-      if (parts.length >= 2) {
-        roadmap.push({
-          title: parts[0].trim(),
-          description: parts.slice(1).join(' - ').trim()
-        });
-      } else {
-        // If no separator, use the whole content as title and generate description
-        roadmap.push({
-          title: content.length > 30 ? content.substring(0, 30) + '...' : content,
-          description: content
-        });
-      }
+    const cleanedLine = line
+      .replace(/^\d+\.\s*/, '')       // Remove numbering like 1.
+      .replace(/^Step\s*\d+:\s*/i, '') // Remove "Step X:"
+      .replace(/^-+\s*/, '')          // Remove leading dashes
+      .replace(/^\*\s*/, '')          // Remove leading stars
+      .replace(/^\*\*(.*?)\*\*/, '$1') // Remove bold
+      .replace(/#{1,6}\s*/, '')       // Remove markdown headers
+      .trim();
+
+    if (cleanedLine && cleanedLine.length > 15 && !cleanedLine.toLowerCase().includes('here are') && !cleanedLine.toLowerCase().includes('instructions:')) {
+      instructions.push(cleanedLine);
     }
   }
-  
-  // If parsing failed, return a basic structure
-  if (roadmap.length === 0) {
-    return [{
-      title: "Get Started",
-      description: cleanedText.substring(0, 100) || "Begin your learning journey"
-    }];
+
+  if (instructions.length === 0) {
+    instructions.push(
+      `Begin by researching and understanding the requirements for: ${stepDescription}`,
+      `Gather all necessary tools, resources, and materials needed`,
+      `Follow established best practices and methodologies`,
+      `Complete the task systematically, checking progress regularly`,
+      `Review and verify your results meet the intended objectives`
+    );
   }
-  
-  return roadmap;
+
+  return instructions.slice(0, 8);
 }
 
-// ROOT ROUTE
-app.get('/', (req, res) => {
-  res.json({
-    message: 'Simplified Roadmap Backend API is running!',
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    endpoints: {
-      health: '/api/health',
-      generateRoadmap: '/api/generate-roadmap',
-      generateInstructions: '/api/generate-instructions'
-    }
-  });
-});
+function generateFallbackInstructions(stepDescription, category) {
+  if (category === 'travel_planner') {
+    return [
+      `Plan your timing and check opening hours for: ${stepDescription}`,
+      `Research transportation options and routes to reach your destination`,
+      `Prepare necessary items like tickets, maps, or reservations`,
+      `Experience the main activities and take time to enjoy the moment`,
+      `Document your experience and prepare for the next activity`,
+      `Check local customs, safety guidelines, and any special requirements`
+    ];
+  } else {
+    return [
+      `Start by understanding the core concepts and requirements for: ${stepDescription}`,
+      `Gather all necessary resources, tools, and learning materials`,
+      `Break down the task into smaller, manageable components`,
+      `Practice the fundamental skills through hands-on exercises`,
+      `Apply your learning to real-world scenarios and projects`,
+      `Review your progress and identify areas for improvement`,
+      `Seek feedback and refine your approach based on results`
+    ];
+  }
+}
 
-// SIMPLIFIED API endpoint to generate roadmap from free-text prompt
-app.post('/api/generate-roadmap', async (req, res) => {
-  try {
-    console.log('📝 Received roadmap generation request:', req.body);
-    
-    const { prompt } = req.body;
-    
-    if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
-      console.error('❌ Missing or invalid prompt');
-      return res.status(400).json({
-        success: false,
-        error: 'A valid prompt is required',
-        timestamp: new Date().toISOString()
-      });
-    }
+// Generate instructions with Gemini AI
+async function generateInstructionsWithGemini(stepDescription, category, phaseNumber, stepNumber, projectName) {
+  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-    const cleanPrompt = prompt.trim();
-    
-    // Check if Gemini AI is available
-    if (!genAI) {
-      console.log('⚠️ Gemini API key not configured, using fallback response');
-      
-      const fallbackResponse = generateFallbackRoadmap(cleanPrompt);
-      
-      return res.json({
-        success: true,
-        projectName: fallbackResponse.projectName,
-        roadmap: fallbackResponse.roadmap,
-        timestamp: new Date().toISOString(),
-        note: 'Using fallback response - configure GEMINI_API_KEY for AI-generated content'
-      });
-    }
+  let prompt = '';
 
+  if (category === 'travel_planner') {
+    prompt = `Create detailed travel instructions for this activity: "${stepDescription}"
+
+Context:
+- This is step ${stepNumber} of day ${phaseNumber} in "${projectName}"
+- Focus on practical travel advice and logistics
+
+Provide 4-6 specific, actionable instructions covering:
+1. Preparation and timing
+2. Transportation/getting there
+3. What to do/see/experience
+4. Practical tips (costs, booking, what to bring)
+5. Safety and local customs
+6. Next steps or connections
+
+Format as clear, numbered steps. Be specific about times, locations, costs, and practical details.
+
+Activity: ${stepDescription}`;
+  } else {
+    prompt = `Create comprehensive learning instructions for: "${stepDescription}"
+
+Context:
+- This is step ${stepNumber} of phase ${phaseNumber} in "${projectName}"
+- Category: ${category.replace('_', ' ')}
+- Focus on practical, hands-on learning
+
+Provide 5-7 detailed, actionable instructions covering:
+1. Prerequisites and preparation
+2. Learning objectives and goals
+3. Step-by-step methodology
+4. Hands-on practice exercises
+5. Resources and tools needed
+6. Progress evaluation
+7. Common pitfalls and troubleshooting
+
+Format as clear, actionable steps. Include specific examples, tools, and practical advice.
+
+Learning Goal: ${stepDescription}`;
+  }
+
+  const result = await model.generateContent(prompt);
+  const response = await result.response;
+  const content = response.text();
+
+  return parseInstructionsFromAI(content, stepDescription);
+}
+
+// Generate instructions with Mistral AI
+async function generateInstructionsWithMistral(stepDescription, category, phaseNumber, stepNumber, projectName) {
+  let prompt = '';
+
+  if (category === 'travel_planner') {
+    prompt = `Generate detailed travel instructions for: "${stepDescription}"
+
+This is day ${phaseNumber}, activity ${stepNumber} of "${projectName}".
+
+Create practical, actionable instructions covering:
+- Pre-visit preparation and timing
+- Transportation and navigation
+- Main activities and experiences
+- Budget considerations and booking tips
+- Local customs and safety advice
+- Connecting to next activities
+
+Provide 4-6 specific, numbered steps with practical details.
+
+Activity: ${stepDescription}`;
+  } else {
+    prompt = `Generate comprehensive learning instructions for: "${stepDescription}"
+
+This is phase ${phaseNumber}, step ${stepNumber} of "${projectName}" in ${category.replace('_', ' ')}.
+
+Create detailed, actionable instructions covering:
+- Learning preparation and setup
+- Core concepts to master
+- Practical exercises and projects
+- Tools and resources needed
+- Skill assessment and practice
+- Troubleshooting common issues
+
+Provide 5-7 specific, numbered steps with examples and practical advice.
+
+Learning objective: ${stepDescription}`;
+  }
+
+  const response = await callMistralAPI([
+    {
+      role: 'system',
+      content: 'You are an expert instructor who creates detailed, practical, step-by-step instructions. Focus on actionable advice with specific examples and real-world application.'
+    },
+    {
+      role: 'user',
+      content: prompt
+    }
+  ], 'mistral-small-latest', 800, 0.7);
+
+  const content = response.choices[0]?.message?.content || '';
+  return parseInstructionsFromAI(content, stepDescription);
+}
+
+// Generate roadmap with AI
+async function generateRoadmapWithAI(prompt, category) {
+  let useGemini = false;
+  let useMistral = false;
+
+  if (category === 'travel_planner' && geminiConfigured) {
+    useGemini = true;
+  } else if (mistralConfigured) {
+    useMistral = true;
+  } else if (geminiConfigured) {
+    useGemini = true;
+  }
+
+  if (useGemini) {
     try {
-      // Generate project name
-      const projectNamePrompt = `Generate a concise, engaging project name (2-5 words) for this goal: "${cleanPrompt}"
-
-Requirements:
-- Keep it short and memorable
-- Make it relevant to the topic
-- Avoid generic words like "journey", "guide", "plan"
-- Return only the project name, nothing else
-
-Examples:
-- For "learn web development" → "Web Dev Mastery"
-- For "start a fitness routine" → "Fitness Transformation"
-- For "learn Spanish" → "Spanish Fluency"`;
-
-      console.log('🤖 Generating project name with Gemini AI...');
       const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-      
-      const nameResult = await model.generateContent(projectNamePrompt);
-      const nameResponse = await nameResult.response;
-      const projectName = cleanAIResponse(nameResponse.text()) || generateFallbackProjectName(cleanPrompt);
+      const aiPrompt = `Create a comprehensive learning roadmap for: ${prompt}
 
-      // Generate roadmap steps
-      const roadmapPrompt = `Create a comprehensive roadmap for: "${cleanPrompt}"
+Structure your response as phases with steps:
 
-Generate 6-10 actionable milestones/steps that will help achieve this goal. Each step should be:
-- Specific and actionable
-- Building progressively toward the goal
-- Realistic and achievable
-- Clear and concise
+Phase 1: [Phase Name - 1-2 words]
+1.1 [Step description]
+1.2 [Step description]
+...
 
-Format your response as a simple list:
-
-Step 1: [Title] - [Brief description of what to accomplish]
-Step 2: [Title] - [Brief description of what to accomplish]
-Step 3: [Title] - [Brief description of what to accomplish]
+Phase 2: [Phase Name - 1-2 words]
+2.1 [Step description]
+2.2 [Step description]
 ...
 
 Requirements:
-- Provide 6-10 steps total
-- Keep titles short (2-4 words)
-- Make descriptions actionable (what specifically to do)
-- Progress logically from beginner to advanced
-- Focus on practical, real-world actions
-- Don't use markdown formatting
+- Create a logical number of phases (3-5 phases)
+- Each phase can have 2-4 steps
+- Phase names should be 1-2 words only (e.g., "Foundation", "Practice", "Mastery")
+- Steps should be specific and actionable
+- Focus on practical, real-world implementation
+- Do not use markdown formatting
+- Keep language clear and professional
 
-Generate the roadmap for: "${cleanPrompt}"`;
+Generate the roadmap for: ${prompt}`;
 
-      console.log('🤖 Generating roadmap steps with Gemini AI...');
-      
-      const roadmapResult = await model.generateContent(roadmapPrompt);
-      const roadmapResponse = await roadmapResult.response;
-      const roadmapText = roadmapResponse.text();
+      const result = await model.generateContent(aiPrompt);
+      const response = await result.response;
+      const content = response.text();
 
-      console.log('✅ Received response from Gemini AI');
+      return parsePhasesFromResponse(content);
+    } catch (error) {
+      console.error('Error with Gemini AI:', error);
+    }
+  }
 
-      // Parse the response into structured roadmap
-      const roadmap = parseRoadmapFromResponse(roadmapText);
-      
-      if (roadmap.length === 0) {
-        throw new Error('Failed to parse roadmap from AI response');
+  if (useMistral) {
+    try {
+      const response = await callMistralAPI([
+        {
+          role: 'system',
+          content: 'You are an expert learning path designer. Create structured, practical roadmaps for learning goals.'
+        },
+        {
+          role: 'user',
+          content: `Create a comprehensive learning roadmap for: ${prompt}
+
+Structure as phases with steps:
+Phase 1: [Name]
+1.1 [Step]
+1.2 [Step]
+
+Create 3-5 phases with 2-4 steps each. Make it practical and actionable.`
+        }
+      ], 'mistral-small-latest', 800, 0.7);
+
+      const content = response.choices[0]?.message?.content || '';
+      return parsePhasesFromResponse(content);
+    } catch (error) {
+      console.error('Error with Mistral AI:', error);
+    }
+  }
+
+  // Fallback roadmap
+  return generateGenericFallback(prompt, category);
+}
+
+function parsePhasesFromResponse(text) {
+  const cleanedText = cleanAIResponse(text);
+  const lines = cleanedText.split('\n').filter(line => line.trim());
+  const phases = [];
+  let currentPhase = null;
+
+  for (const line of lines) {
+    // Match phase headers (Phase 1:, Phase 2:, etc.)
+    const phaseMatch = line.match(/^Phase\s+(\d+):\s*(.+)/i);
+    if (phaseMatch) {
+      if (currentPhase) {
+        phases.push(currentPhase);
       }
+      currentPhase = {
+        number: parseInt(phaseMatch[1]),
+        name: phaseMatch[2].trim(),
+        steps: []
+      };
+      continue;
+    }
 
-      console.log(`📊 Generated roadmap with ${roadmap.length} steps`);
-
-      // Return structured response
-      res.json({
-        success: true,
-        projectName: projectName.replace(/['"]/g, ''), // Clean quotes
-        roadmap,
-        timestamp: new Date().toISOString()
+    // Match steps within phases (1.1, 1.2, etc.)
+    const stepMatch = line.match(/^(\d+)\.(\d+)\s*(.+)/) || line.match(/^-\s*(.+)/);
+    if (stepMatch && currentPhase) {
+      const stepContent = stepMatch[3] || stepMatch[1];
+      currentPhase.steps.push({
+        title: stepContent.length > 50 ? stepContent.substring(0, 50) + '...' : stepContent,
+        description: stepContent
       });
+    }
+  }
 
-    } catch (aiError) {
-      console.error('❌ AI generation error, falling back:', aiError);
-      
-      // Fallback to manual generation if AI fails
-      const fallbackResponse = generateFallbackRoadmap(cleanPrompt);
-      
-      res.json({
+  if (currentPhase) {
+    phases.push(currentPhase);
+  }
+
+  return phases.length > 0 ? phases : generateGenericFallback(text, 'learning');
+}
+
+function generateGenericFallback(prompt, category) {
+  return [
+    {
+      number: 1,
+      name: 'Foundation',
+      steps: [
+        { title: 'Research Basics', description: `Learn the fundamentals of ${prompt}` },
+        { title: 'Set Goals', description: `Define clear objectives for ${prompt}` },
+        { title: 'Gather Resources', description: `Collect materials needed for ${prompt}` }
+      ]
+    },
+    {
+      number: 2,
+      name: 'Development',
+      steps: [
+        { title: 'Build Skills', description: `Develop core skills for ${prompt}` },
+        { title: 'Practice Daily', description: `Apply what you've learned about ${prompt}` },
+        { title: 'Get Feedback', description: `Seek feedback on your ${prompt} progress` }
+      ]
+    },
+    {
+      number: 3,
+      name: 'Mastery',
+      steps: [
+        { title: 'Advanced Techniques', description: `Master advanced aspects of ${prompt}` },
+        { title: 'Share Knowledge', description: `Teach others about ${prompt}` },
+        { title: 'Build Portfolio', description: `Create showcase projects for ${prompt}` }
+      ]
+    }
+  ];
+}
+
+// POST route for instructions
+app.post('/api/instructions', async (req, res) => {
+  try {
+    console.log('📝 Received instructions generation request:', req.body);
+
+    let { stepDescription, category, phaseNumber, stepNumber, projectName, useAI = 'auto' } = req.body;
+
+    // Provide fallback default if stepDescription missing
+    if (!stepDescription || stepDescription.trim().length === 0) {
+      if (projectName && projectName.trim().length > 0) {
+        stepDescription = `General instructions for project ${projectName}`;
+      } else if (category) {
+        stepDescription = `General instructions for category ${category}`;
+      } else {
+        stepDescription = 'General learning instructions';
+      }
+      console.log('⚠️ No stepDescription provided, using default:', stepDescription);
+    }
+
+    let useGemini = false;
+    let useMistral = false;
+
+    if (useAI === 'gemini' && geminiConfigured) {
+      useGemini = true;
+    } else if (useAI === 'mistral' && mistralConfigured) {
+      useMistral = true;
+    } else if (useAI === 'auto') {
+      if (category === 'travel_planner' && geminiConfigured) {
+        useGemini = true;
+      } else if (mistralConfigured) {
+        useMistral = true;
+      } else if (geminiConfigured) {
+        useGemini = true;
+      }
+    }
+
+    if (!useGemini && !useMistral) {
+      console.log('⚠️ No AI configured or requested, using fallback response');
+      const fallbackInstructions = generateFallbackInstructions(stepDescription, category);
+      return res.json({
         success: true,
-        projectName: fallbackResponse.projectName,
-        roadmap: fallbackResponse.roadmap,
+        instructions: fallbackInstructions,
         timestamp: new Date().toISOString(),
-        note: 'AI service temporarily unavailable, using fallback content'
+        aiUsed: 'fallback',
+        note: 'Using fallback response - configure AI API keys for enhanced content'
       });
     }
 
+    let instructions = [];
+    let aiUsed = '';
+
+    if (useGemini) {
+      console.log('🤖 Using Gemini AI for enhanced instructions...');
+      instructions = await generateInstructionsWithGemini(stepDescription, category, phaseNumber, stepNumber, projectName);
+      aiUsed = 'gemini';
+    } else if (useMistral) {
+      console.log('🤖 Using Mistral AI for enhanced instructions...');
+      instructions = await generateInstructionsWithMistral(stepDescription, category, phaseNumber, stepNumber, projectName);
+      aiUsed = 'mistral';
+    }
+
+    console.log(`📊 Generated ${instructions.length} detailed instructions using ${aiUsed}`);
+
+    res.json({
+      success: true,
+      instructions,
+      timestamp: new Date().toISOString(),
+      aiUsed,
+      category,
+      stepDescription
+    });
+
+  } catch (error) {
+    console.error('❌ Error generating instructions:', error);
+
+    try {
+      const fallbackInstructions = generateFallbackInstructions(req.body.stepDescription || 'General learning instructions', req.body.category);
+      res.json({
+        success: true,
+        instructions: fallbackInstructions,
+        timestamp: new Date().toISOString(),
+        aiUsed: 'fallback',
+        error: 'AI generation failed, using fallback',
+        originalError: error.message
+      });
+    } catch (fallbackError) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to generate instructions',
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+});
+
+// POST route for generating roadmaps - THIS WAS MISSING!
+app.post('/api/generate-roadmap', async (req, res) => {
+  try {
+    console.log('📝 Received roadmap generation request:', req.body);
+
+    const { prompt, category } = req.body;
+
+    if (!prompt || !category) {
+      console.error('❌ Missing required fields:', { prompt: !!prompt, category: !!category });
+      return res.status(400).json({
+        success: false,
+        error: 'Prompt and category are required',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    console.log('🤖 Generating roadmap with AI...');
+    const phases = await generateRoadmapWithAI(prompt, category);
+
+    const projectName = `Learn ${prompt.split(' ').slice(0, 3).join(' ')}`;
+
+    console.log(`📊 Generated ${phases.length} phases for roadmap`);
+
+    res.json({
+      success: true,
+      projectName: projectName,
+      phases: phases,
+      category,
+      originalPrompt: prompt,
+      timestamp: new Date().toISOString()
+    });
+
   } catch (error) {
     console.error('❌ Error generating roadmap:', error);
-    
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to generate roadmap',
@@ -316,167 +523,20 @@ Generate the roadmap for: "${cleanPrompt}"`;
   }
 });
 
-// API endpoint to generate instructions using Mistral AI
-app.post('/api/generate-instructions', async (req, res) => {
-  try {
-    console.log('📝 Received instructions generation request:', req.body);
-    
-    const { stepDescription } = req.body;
-    
-    if (!stepDescription) {
-      console.error('❌ Missing stepDescription');
-      return res.status(400).json({
-        success: false,
-        error: 'Step description is required',
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    // Check if Mistral API key is configured
-    if (!mistralConfigured) {
-      console.log('⚠️ Mistral API key not configured, using fallback response');
-      
-      // Fallback response when API key is not configured
-      const fallbackInstructions = [
-        `Start by understanding the requirements for: ${stepDescription}`,
-        `Gather all necessary resources and tools needed`,
-        `Follow best practices and established guidelines`,
-        `Complete the task systematically and verify results`,
-        `Review your work and make necessary improvements`
-      ];
-      
-      return res.json({
-        success: true,
-        instructions: fallbackInstructions,
-        timestamp: new Date().toISOString(),
-        note: 'Using fallback response - configure MISTRAL_API_KEY for AI-generated content'
-      });
-    }
-
-    // Generate instructions using Mistral AI
-    const prompt = `Provide clear, actionable instructions for: ${stepDescription}
-
-Please provide 4-6 specific steps to accomplish this task. Each instruction should be:
-- Clear and actionable
-- Easy to understand
-- Practical to implement
-- Building upon the previous step
-
-Provide only the instructions as a simple numbered list, without additional commentary.
-
-Task: ${stepDescription}`;
-
-    console.log('🤖 Calling Mistral AI for instructions...');
-    
-    const response = await callMistralAPI([
-      {
-        role: 'user',
-        content: prompt
-      }
-    ], 'mistral-small-latest', 500, 0.7);
-
-    console.log('✅ Received response from Mistral AI');
-
-    const content = response.choices[0]?.message?.content || '';
-    
-    // Parse the response into instructions
-    const lines = content.split('\n').filter(line => line.trim());
-    const instructions = [];
-    
-    for (const line of lines) {
-      // Remove numbering and clean up the text
-      const cleanedLine = line
-        .replace(/^\d+\.\s*/, '') // Remove "1. " style numbering
-        .replace(/^-\s*/, '')     // Remove "- " style bullets
-        .replace(/^\*\s*/, '')    // Remove "* " style bullets
-        .trim();
-      
-      if (cleanedLine && cleanedLine.length > 10) { // Only include substantial instructions
-        instructions.push(cleanedLine);
-      }
-    }
-    
-    // Ensure we have at least one instruction
-    if (instructions.length === 0) {
-      instructions.push(`Complete the task: ${stepDescription}`);
-    }
-
-    console.log(`📊 Generated ${instructions.length} instructions`);
-
-    res.json({
-      success: true,
-      instructions,
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('❌ Error generating instructions:', error);
-    
-    // Fallback response on error
-    const fallbackInstructions = [
-      `Research and understand: ${req.body.stepDescription}`,
-      `Plan your approach and gather resources`,
-      `Execute the task step by step`,
-      `Review and refine your work`,
-      `Document your progress and learnings`
-    ];
-    
-    res.json({
-      success: true,
-      instructions: fallbackInstructions,
-      timestamp: new Date().toISOString(),
-      note: 'AI service temporarily unavailable, using fallback content'
-    });
-  }
-});
-
-// Health check endpoint
+// GET route for health check
 app.get('/api/health', (req, res) => {
-  console.log('🏥 Health check requested');
-  
-  const healthData = {
+  res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    geminiConfigured: !!(GEMINI_API_KEY && GEMINI_API_KEY !== 'your-gemini-api-key-here'),
-    mistralConfigured: mistralConfigured,
+    geminiConfigured,
+    mistralConfigured,
     port: PORT,
-    environment: process.env.NODE_ENV || 'development',
-    aiServices: {
-      gemini: {
-        configured: !!(GEMINI_API_KEY && GEMINI_API_KEY !== 'your-gemini-api-key-here'),
-        status: genAI ? 'active' : 'inactive'
-      },
-      mistral: {
-        configured: mistralConfigured,
-        status: mistralConfigured ? 'active' : 'inactive'
-      }
-    }
-  };
-  
-  console.log('🏥 Health check response:', healthData);
-  
-  res.json(healthData);
-});
-
-// Error handling middleware
-app.use((error, req, res, next) => {
-  console.error('💥 Server error:', error);
-  res.status(500).json({
-    success: false,
-    error: 'Internal server error',
-    timestamp: new Date().toISOString()
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log('🚀 Simplified Roadmap Backend Server running on port', PORT);
-  console.log('📡 API endpoints:');
-  console.log('  - Generate Roadmap: http://localhost:' + PORT + '/api/generate-roadmap');
-  console.log('  - Generate Instructions: http://localhost:' + PORT + '/api/generate-instructions');
-  console.log('  - Health Check: http://localhost:' + PORT + '/api/health');
-  console.log('🔑 Gemini API configured:', !!(GEMINI_API_KEY && GEMINI_API_KEY !== 'your-gemini-api-key-here'));
+app.listen(PORT, () => {
+  console.log(`🚀 Flowniq Backend Server running on port ${PORT}`);
+  console.log('🔑 Gemini API configured:', geminiConfigured);
   console.log('🔑 Mistral API configured:', mistralConfigured);
-  console.log('🌐 CORS enabled for development');
-  console.log('🏠 Root endpoint: http://localhost:' + PORT + '/');
 });
